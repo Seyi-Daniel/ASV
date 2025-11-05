@@ -220,8 +220,8 @@ def evaluate_population(
 class TrainingResult:
     """Outcome of a NEAT training run."""
 
-    winner
-    config
+    winner: neat.DefaultGenome
+    config: neat.Config
     statistics: neat.StatisticsReporter
 
 
