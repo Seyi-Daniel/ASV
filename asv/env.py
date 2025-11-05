@@ -97,6 +97,12 @@ class CrossingScenarioEnv:
 
         self._traces = [deque(maxlen=1200) for _ in states]
         for idx, spec in enumerate(states):
+            goal = spec.get("goal")
+            if goal is None:
+                gx = spec.get("goal_x")
+                gy = spec.get("goal_y")
+                if gx is not None and gy is not None:
+                    goal = (gx, gy)
             boat = Boat(
                 boat_id=idx,
                 x=float(spec["x"]),
@@ -105,6 +111,7 @@ class CrossingScenarioEnv:
                 speed=float(spec.get("speed", 0.0)),
                 kin=self.kin,
                 tcfg=self.tcfg,
+                goal=goal,
             )
             self.ships.append(boat)
 
@@ -266,6 +273,11 @@ class CrossingScenarioEnv:
     # ------------------------------------------------------------------
     # Convenience helpers
     # ------------------------------------------------------------------
+    def snapshot(self) -> List[dict]:
+        """Return a copy of the observable state for each vessel."""
+
+        return [boat.snapshot() for boat in self.ships]
+
     def run_scenario(
         self,
         steps: int,

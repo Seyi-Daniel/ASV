@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import argparse
 import math
+import random
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Tuple
+from typing import Iterable, Optional, Tuple
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -14,7 +15,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from asv import BoatParams, CrossingScenarioEnv, EnvConfig, TurnSessionConfig
 
-# Ordered bearings, matching the exact positions requested by the user.
+# Ordered bearings matching the sequence requested by the user: first 5°, then
+# the midpoint, the maximum, followed by the quarter and three-quarter points.
 STAND_ON_BEARINGS_DEG: Tuple[float, ...] = (
     5.0,
     (5.0 + 112.5) / 2.0,
@@ -33,6 +35,7 @@ class VesselState:
     y: float
     heading_deg: float
     speed: float
+    goal: Optional[Tuple[float, float]] = None
 
     def bearing_to(self, other: "VesselState") -> float:
         """Return clockwise (starboard) relative bearing to ``other`` in degrees."""
@@ -85,26 +88,38 @@ class ScenarioRequest:
 def compute_crossing_geometry(angle_deg: float, request: ScenarioRequest) -> CrossingScenario:
     """Create the crossing encounter for a single bearing value."""
 
-    beta = math.radians(angle_deg)
     crossing_point = (0.0, 0.0)
+    approach = request.crossing_distance
 
-    offset_agent = request.crossing_distance * math.cos(beta)
-    offset_stand = request.crossing_distance * math.sin(beta)
-
+    # Give-way vessel approaches from the west toward the crossing point.
     agent = VesselState(
         name="give_way",
-        x=0.0,
-        y=-offset_agent,
-        heading_deg=90.0,
+        x=-approach,
+        y=0.0,
+        heading_deg=0.0,
         speed=request.agent_speed,
+        goal=(crossing_point[0] + approach, crossing_point[1]),
     )
+
+    # Place the stand-on vessel by rotating around the give-way bow to achieve
+    # the requested starboard bearing. Its heading is set to drive through the
+    # crossing point, and the goal lies further along that course for future
+    # controllers (e.g. NEAT) to utilise.
+    port_angle_rad = math.radians(360.0 - angle_deg)
+    stand_x = agent.x + approach * math.cos(port_angle_rad)
+    stand_y = agent.y + approach * math.sin(port_angle_rad)
+    heading_rad = math.atan2(crossing_point[1] - stand_y, crossing_point[0] - stand_x)
+    heading_deg = (math.degrees(heading_rad) + 360.0) % 360.0
+    goal_x = crossing_point[0] + approach * math.cos(heading_rad)
+    goal_y = crossing_point[1] + approach * math.sin(heading_rad)
 
     stand_on = VesselState(
         name="stand_on",
-        x=offset_stand,
-        y=0.0,
-        heading_deg=180.0,
+        x=stand_x,
+        y=stand_y,
+        heading_deg=heading_deg,
         speed=request.stand_on_speed,
+        goal=(goal_x, goal_y),
     )
 
     return CrossingScenario(
@@ -148,12 +163,17 @@ def scenario_states_for_env(env: CrossingScenarioEnv, scenario: CrossingScenario
     cross_y = cy + scenario.crossing_point[1]
 
     def convert(vessel: VesselState) -> dict:
-        return {
+        data = {
             "x": cross_x + vessel.x,
             "y": cross_y + vessel.y,
             "heading": math.radians(vessel.heading_deg),
             "speed": vessel.speed,
         }
+        if vessel.goal is not None:
+            gx, gy = vessel.goal
+            data["goal_x"] = cross_x + gx
+            data["goal_y"] = cross_y + gy
+        return data
 
     states = [convert(scenario.agent), convert(scenario.stand_on)]
     meta = {
@@ -164,14 +184,52 @@ def scenario_states_for_env(env: CrossingScenarioEnv, scenario: CrossingScenario
     return states, meta
 
 
-def run_render_loop(env: CrossingScenarioEnv, scenario: CrossingScenario, duration: float) -> None:
+class RandomGiveWayPolicy:
+    """Placeholder controller emitting random actions for the give-way boat."""
+
+    def __init__(self, seed: Optional[int] = None) -> None:
+        self._rng = random.Random(seed)
+
+    def choose_action(self, inputs: Tuple[float, float, float, float, float, float]) -> int:
+        """Select one of the nine discrete helm/throttle combinations."""
+
+        return self._rng.randrange(9)
+
+
+def agent_inputs_from_state(state: dict) -> Tuple[float, float, float, float, float, float]:
+    """Build the six-element observation vector expected by future NEAT logic."""
+
+    goal_x = float(state.get("goal_x", 0.0))
+    goal_y = float(state.get("goal_y", 0.0))
+    return (
+        float(state["x"]),
+        float(state["y"]),
+        float(state["speed"]),
+        math.degrees(float(state["heading"])),
+        goal_x,
+        goal_y,
+    )
+
+
+def run_render_loop(
+    env: CrossingScenarioEnv,
+    scenario: CrossingScenario,
+    duration: float,
+    seed: Optional[int] = None,
+) -> None:
     states, meta = scenario_states_for_env(env, scenario)
     env.reset_from_states(states, meta=meta)
+    env.enable_render()
+    controller = RandomGiveWayPolicy(seed=seed)
 
     steps = max(1, int(round(duration / env.cfg.dt)))
     env.render()
     for _ in range(steps):
-        env.step()
+        snapshot = env.snapshot()
+        agent_state = snapshot[0] if snapshot else {}
+        inputs = agent_inputs_from_state(agent_state) if agent_state else (0,) * 6
+        action = controller.choose_action(inputs)
+        env.step([action, None])
         env.render()
 
 
@@ -251,6 +309,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable the on-screen HUD panel.",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Random seed for the give-way controller (enables reproducibility).",
+    )
     return parser.parse_args()
 
 
@@ -283,7 +347,8 @@ def main() -> None:
                 print(
                     f"  • Scenario {idx}: bearing {scenario.requested_bearing:6.2f}°"
                 )
-                run_render_loop(env, scenario, args.duration)
+                seed_value = None if args.seed is None else args.seed + idx - 1
+                run_render_loop(env, scenario, args.duration, seed=seed_value)
         else:
             print("\nRendering disabled; use --render to open the pygame visualisation.")
     finally:

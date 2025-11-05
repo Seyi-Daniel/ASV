@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import math
-from typing import Tuple
+from typing import Optional, Tuple
 
 from .config import BoatParams, TurnSessionConfig
 from .utils import clamp, wrap_pi
@@ -20,6 +20,7 @@ class Boat:
         speed: float,
         kin: BoatParams,
         tcfg: TurnSessionConfig,
+        goal: Optional[Tuple[float, float]] = None,
     ) -> None:
         self.id = boat_id
         self.x = float(x)
@@ -28,6 +29,13 @@ class Boat:
         self.u = float(speed)
         self.kin = kin
         self.tcfg = tcfg
+        if goal is not None:
+            gx, gy = goal
+            self.goal_x = float(gx)
+            self.goal_y = float(gy)
+        else:
+            self.goal_x = None
+            self.goal_y = None
 
         self.last_thr = 0
         self.last_helm = 0
@@ -35,6 +43,22 @@ class Boat:
         self.session_active = False
         self.session_dir = 0
         self.session_target = 0.0
+
+    # ------------------------------------------------------------------
+    # State helpers
+    # ------------------------------------------------------------------
+    def snapshot(self) -> dict:
+        """Return the observable state for this boat."""
+
+        return {
+            "id": self.id,
+            "x": self.x,
+            "y": self.y,
+            "heading": self.h,
+            "speed": self.u,
+            "goal_x": self.goal_x,
+            "goal_y": self.goal_y,
+        }
 
     @staticmethod
     def decode_action(action: int) -> Tuple[int, int]:
