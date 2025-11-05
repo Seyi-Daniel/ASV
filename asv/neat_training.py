@@ -128,9 +128,14 @@ def run_episode(
     kin: BoatParams,
     params: FitnessParameters,
     feature_scale: float,
+    *,
+    render: bool = False,
 ) -> EpisodeMetrics:
     states, meta = scenario_states_for_env(env, scenario)
     env.reset_from_states(states, meta=meta)
+
+    if render:
+        env.render()
 
     min_sep = float("inf")
     steps = 0
@@ -148,6 +153,9 @@ def run_episode(
 
         env.step([action, None])
         steps = step + 1
+
+        if render:
+            env.render()
 
         snapshot = env.snapshot()
         if not snapshot:
@@ -186,6 +194,9 @@ def run_episode(
             min_sep = min(min_sep, _separation(agent_state, stand_on_state))
     else:
         distance = 0.0
+
+    if render:
+        env.render()
 
     return EpisodeMetrics(
         steps=max(steps, params.max_steps),

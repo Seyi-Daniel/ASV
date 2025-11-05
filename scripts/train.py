@@ -95,6 +95,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Environment ------------------------------------------------------
     parser.add_argument(
+        "--render",
+        action="store_true",
+        help="Enable pygame rendering during winner evaluation.",
+    )
+    parser.add_argument(
         "--dt",
         type=float,
         default=EnvConfig.dt,
@@ -192,13 +197,15 @@ def build_fitness_parameters(args: argparse.Namespace) -> FitnessParameters:
     )
 
 
-def build_env(args: argparse.Namespace, boat_params: BoatParams) -> CrossingScenarioEnv:
+def build_env(
+    args: argparse.Namespace, boat_params: BoatParams, *, render: bool = False
+) -> CrossingScenarioEnv:
     cfg = EnvConfig(
         world_w=args.world_width,
         world_h=args.world_height,
         dt=args.dt,
         substeps=args.substeps,
-        render=False,
+        render=render,
         pixels_per_meter=EnvConfig.pixels_per_meter,
         show_grid=False,
         show_trails=False,
@@ -214,14 +221,27 @@ def summarise_winner(
     params: FitnessParameters,
     feature_scale: float,
     boat_params: BoatParams,
+    *,
+    render: bool = False,
 ) -> None:
     """Print a small summary of the winning genome's behaviour."""
+
+    if render:
+        env.enable_render()
 
     network = neat.nn.FeedForwardNetwork.create(result.winner, result.config)
     total_cost = 0.0
     print("\nWinner evaluation summary:")
     for idx, scenario in enumerate(scenarios, start=1):
-        metrics = run_episode(env, scenario, network, boat_params, params, feature_scale)
+        metrics = run_episode(
+            env,
+            scenario,
+            network,
+            boat_params,
+            params,
+            feature_scale,
+            render=render,
+        )
         cost = episode_cost(metrics, params)
         total_cost += cost
         status = "reached goal" if metrics.reached_goal else ("collision" if metrics.collided else "timeout")
@@ -250,7 +270,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     feature_scale = max(1.0, args.distance_normaliser)
 
     boat_params = BoatParams()
-    env = build_env(args, boat_params)
+    env = build_env(args, boat_params, render=False)
 
     try:
         result = train_population(
@@ -266,7 +286,15 @@ def main(argv: Optional[list[str]] = None) -> None:
             checkpoint_interval=args.checkpoint_interval,
         )
 
-        summarise_winner(result, env, scenarios, fitness_params, feature_scale, boat_params)
+        summarise_winner(
+            result,
+            env,
+            scenarios,
+            fitness_params,
+            feature_scale,
+            boat_params,
+            render=args.render,
+        )
 
         if args.save_winner is not None:
             with args.save_winner.open("wb") as fh:
