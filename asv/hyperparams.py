@@ -29,6 +29,7 @@ class TrainingHyperParameters:
     save_every: int = 50
     seed: int = 0
     render: bool = False
+    show_hud: bool = True
 
     log_actions: bool = True
     actions_filename: str = "actions_all.csv"
@@ -72,6 +73,7 @@ class GlobalHyperParameters:
         """Propagate training-driven defaults into the other configs."""
         hp = self.training
         self.env.render = hp.render
+        self.env.show_hud = hp.show_hud
         self.env.seed = hp.seed
         self.env.substeps = hp.substeps
         self.env.max_steps = hp.steps_per_episode

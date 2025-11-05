@@ -45,14 +45,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     for field in fields(TrainingHyperParameters):
         name = field.name
+        arg_name = name.replace("_", "-")
         default = getattr(defaults, name)
         annotation = hints.get(name, field.type)
 
         if annotation is bool:
             if default:
-                parser.add_argument(f"--no-{name}", dest=name, action="store_false")
+                parser.add_argument(f"--no-{arg_name}", dest=name, action="store_false")
             else:
-                parser.add_argument(f"--{name}", dest=name, action="store_true")
+                parser.add_argument(f"--{arg_name}", dest=name, action="store_true")
             parser.set_defaults(**{name: default})
             continue
 
@@ -64,7 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
                 annotation = args[0]
 
         arg_type = _cli_type_from_annotation(annotation, default)
-        parser.add_argument(f"--{name}", type=arg_type, default=default)
+        parser.add_argument(f"--{arg_name}", dest=name, type=arg_type, default=default)
 
     return parser
 
