@@ -193,11 +193,10 @@ class MultiBoatSectorsEnv:
         h = len(lines) * line_height + 2 * pad
         panel = pygame.Surface((w, h), pygame.SRCALPHA)
         panel.fill((0, 0, 0, 160))
-        y = pad
-        for text in lines:
+        for idx, text in enumerate(lines):
+            y = pad + idx * line_height
             img = font.render(text, True, (240, 240, 240))
             panel.blit(img, (pad, y))
-            y += line_height
         surf.blit(panel, (10, 10))
 
     def render(self) -> None:
