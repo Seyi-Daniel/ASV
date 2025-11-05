@@ -146,7 +146,8 @@ class MultiBoatSectorsEnv:
         if not self.hud_on:
             return
         font = pygame.font.Font(None, 18)
-        pad, line_height = 8, 20
+        pad = 8
+        line_spacing = 20
         fps = self._clock.get_fps() if self._clock else 0.0
 
         def fmt_reward(value: float) -> str:
@@ -190,13 +191,12 @@ class MultiBoatSectorsEnv:
             lines.append(f"reason: {reason}")
 
         w = max(font.size(text)[0] for text in lines) + 2 * pad
-        h = len(lines) * line_height + 2 * pad
+        h = len(lines) * line_spacing + 2 * pad
         panel = pygame.Surface((w, h), pygame.SRCALPHA)
         panel.fill((0, 0, 0, 160))
         for idx, text in enumerate(lines):
-            y = pad + idx * line_height
             img = font.render(text, True, (240, 240, 240))
-            panel.blit(img, (pad, y))
+            panel.blit(img, (pad, pad + idx * line_spacing))
         surf.blit(panel, (10, 10))
 
     def render(self) -> None:
